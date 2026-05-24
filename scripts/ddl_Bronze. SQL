@@ -1,0 +1,145 @@
+use datawarehouse;
+create database bronze;
+create database silver;
+create database gold;
+use bronze;
+	CREATE TABLE bronze.crm_cust_info (
+		cst_id INT,
+		cst_key VARCHAR(10),
+		cst_firstname NVARCHAR(50),
+		cst_lastname NVARCHAR(50),
+		cst_marital_status NVARCHAR(10),
+		cst_gndr NVARCHAR(10),
+		cst_create_date DATE
+	);
+	ALTER TABLE crm_cust_info
+	MODIFY cst_id INT NULL;
+ALTER TABLE bronze.crm_cust_info
+MODIFY cst_id VARCHAR(50),
+MODIFY cst_key VARCHAR(50),
+MODIFY cst_firstname VARCHAR(50),
+MODIFY cst_lastname VARCHAR(50),
+MODIFY cst_marital_status VARCHAR(20),
+MODIFY cst_gndr VARCHAR(20),
+MODIFY cst_create_date VARCHAR(50);
+create table bronze.crm_prd_info(
+prd_id int,
+prd_key varchar(50),
+prd_nm varchar(50),
+prd_cost int,
+prd_line varchar(1),
+prd_start_dt date,
+prd_end_dt date
+);
+ALTER TABLE bronze.crm_prd_info
+MODIFY prd_id VARCHAR(50) NULL,
+MODIFY prd_key VARCHAR(50) NULL,
+MODIFY prd_nm VARCHAR(100) NULL,
+MODIFY prd_cost VARCHAR(50) NULL,
+MODIFY prd_line VARCHAR(50) NULL,
+MODIFY prd_start_dt VARCHAR(50) NULL,
+MODIFY prd_end_dt VARCHAR(50) NULL;
+create table bronze.crm_sales_details(
+sls_ord_num varchar(50),
+sls_prd_key varchar(50),
+sls_cust_id int,
+sls_order_dt int,
+sls_ship_dt int,
+sls_due_dt int,
+sls_sales int,
+sls_quantity int,
+sls_price int
+);
+ALTER TABLE bronze.crm_sales_details
+MODIFY sls_ord_num VARCHAR(50) NULL,
+MODIFY sls_prd_key VARCHAR(50) NULL,
+MODIFY sls_cust_id VARCHAR(50) NULL,
+MODIFY sls_order_dt VARCHAR(50) NULL,
+MODIFY sls_ship_dt VARCHAR(50) NULL,
+MODIFY sls_due_dt VARCHAR(50) NULL,
+MODIFY sls_sales VARCHAR(50) NULL,
+MODIFY sls_quantity VARCHAR(50) NULL,
+MODIFY sls_price VARCHAR(50) NULL;
+create table bronze.erp_CUST_AZ12(
+CID nvarchar(20),
+BDATE date,
+GEN NVARCHAR(10)
+);
+alter table bronze.erp_CUST_AZ12
+modify BDATE varchar(30);
+ALTER TABLE crm_prd_info
+MODIFY prd_cost VARCHAR(50);
+
+ALTER TABLE bronze.crm_cust_info
+MODIFY cst_gndr VARCHAR(20) NULL;
+
+create TABLE bronze.erp_LOC_A101(
+CID NVARCHAR(20),
+CNTRY NVARCHAR(30)
+);
+
+CREATE TABLE bronze.erp_PX_CAT_G1V2(
+ID varchar(20), 
+CAT VARCHAR(20),
+SUBCAT VARCHAR(20),
+MAINTENANCE VARCHAR(10)
+);
+
+DELIMITER //
+
+CREATE PROCEDURE load_bronze()
+BEGIN
+
+LOAD DATA INFILE 'C:/ProgramData/MySQL/MySQL Server 8.0/Uploads/cust_info.csv'
+INTO TABLE crm_cust_info
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS
+(@cst_id, cst_key, cst_firstname,cst_lastname,cst_marital_status, cst_gndr,cst_create_date)
+SET cst_id = NULLIF(@cst_id, '');
+
+LOAD DATA INFILE 'C:/ProgramData/MySQL/MySQL Server 8.0/Uploads/prd_info.csv'
+INTO TABLE crm_prd_info
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS;
+
+
+LOAD DATA INFILE 'C:/ProgramData/MySQL/MySQL Server 8.0/Uploads/sales_details.csv'
+INTO TABLE crm_sales_details
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS;
+
+
+LOAD DATA INFILE 'C:/ProgramData/MySQL/MySQL Server 8.0/Uploads/LOC_A101.csv'
+INTO TABLE erp_loc_a101
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS;
+select * from erp_loc_a101;
+
+LOAD DATA INFILE 'C:/ProgramData/MySQL/MySQL Server 8.0/Uploads/CUST_AZ12.csv'
+INTO TABLE bronze.erp_CUST_AZ12
+FIELDS TERMINATED BY ','
+OPTIONALLY ENCLOSED BY '"'
+LINES TERMINATED BY '\r\n'
+IGNORE 1 ROWS
+(CID, BDATE, @GEN)
+SET GEN = NULLIF(@GEN, '');
+select * from erp_PX_CAT_G1V2;
+
+LOAD DATA INFILE 'C:/ProgramData/MySQL/MySQL Server 8.0/Uploads/PX_CAT_G1V2.csv'
+INTO TABLE bronze.erp_PX_CAT_G1V2
+FIELDS TERMINATED BY ','
+OPTIONALLY ENCLOSED BY '"'
+LINES TERMINATED BY '\r\n'
+IGNORE 1 ROWS;
+
+END //
+
+DELIMITER ;
