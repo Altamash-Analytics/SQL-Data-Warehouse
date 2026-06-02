@@ -1,1 +1,208 @@
 
+DELIMITER $$
+create  procedure silver.load_silver()
+BEGIN
+truncate silver.crm_cust_info;
+truncate silver.crm_prd_info;
+truncate silver.crm_sales_details;
+truncate silver.erp_cust_az12;
+truncate silver.erp_loc_a101;
+truncate silver.erp_px_cat_g1v2;
+-- crm_cust_info
+INSERT INTO silver.crm_cust_info (
+    cst_id,
+    cst_key,
+    cst_firstname,
+    cst_lastname,
+    cst_marital_status,
+    cst_gndr,
+    cst_create_date
+)
+
+SELECT
+CASE
+    WHEN cst_id IS NULL THEN NULL
+    WHEN cst_id = '' THEN NULL
+    WHEN cst_id REGEXP '^[0-9]+$'
+        THEN CAST(cst_id AS SIGNED)
+    ELSE NULL
+END,
+
+TRIM(cst_key),
+
+TRIM(cst_firstname),
+
+TRIM(cst_lastname),
+
+TRIM(cst_marital_status),
+
+TRIM(cst_gndr),
+
+CASE
+    WHEN cst_create_date IS NULL THEN NULL
+    WHEN TRIM(cst_create_date) = '' THEN NULL
+    ELSE STR_TO_DATE(TRIM(cst_create_date), '%d-%m-%Y')
+END
+
+FROM bronze.crm_cust_info;
+
+-- crm_prd_info
+insert into silver.crm_prd_info
+(prd_id,
+cat_id,
+prd_key, 
+prd_nm, 
+prd_cost,
+prd_line,
+prd_start_dt, 
+prd_end_dt,
+dwh_create_date
+) 
+
+SELECT `crm_prd_info`.`prd_id`,
+    replace(substring(prd_key,1,5),'-','_') as cat_id,
+    substring(PRD_KEY, 7, length(PRD_KEY)) AS PRD_KEY,
+    `crm_prd_info`.`prd_nm`,
+     CASE
+        WHEN TRIM(prd_cost) = '' THEN 0
+        WHEN TRIM(prd_cost) = ' ' THEN 0
+        ELSE prd_cost
+    END AS prd_cost,
+    CASE
+    WHEN UPPER(TRIM(PRD_LINE))='M' THEN 'Mountain'
+    WHEN UPPER(TRIM(PRD_LINE))='R' THEN 'Road'
+    WHEN UPPER(TRIM(PRD_LINE))='S' THEN 'Other Sales'
+    WHEN UPPER(TRIM(PRD_LINE))='T' THEN 'Touring'
+    else 'N/A'
+    end as Prd_line,
+   CAST(crm_prd_info.prd_start_dt AS DATE) AS prd_start_dt,
+    DATE_SUB(
+    LEAD(prd_start_dt)
+    OVER(
+        PARTITION BY prd_key
+        ORDER BY prd_start_dt
+    ),
+    INTERVAL 1 DAY
+) as prd_end_dt,
+    NOW() AS dwh_create_date
+FROM `bronze`.`crm_prd_info`;
+
+-- crm_sales_deatils
+insert into silver.crm_sales_details
+(
+sls_ord_num,
+sls_prd_key,
+sls_cust_id,
+sls_order_dt,
+sls_ship_dt,
+sls_due_dt,
+sls_sales,
+sls_quantity,
+sls_price
+)
+select sls_ord_num,sls_prd_key,sls_cust_id,sls_order_dt,sls_ship_dt,sls_due_dt,(sls_quantity*sls_price)
+as sls_sales,sls_quantity, sls_price from (
+select  sls_ord_num,
+sls_prd_key,
+sls_cust_id,
+CASE
+    WHEN sls_order_dt = 0
+         OR LENGTH(sls_order_dt) <> 8
+    THEN NULL
+
+    ELSE STR_TO_DATE(
+            CAST(sls_order_dt AS CHAR),
+            '%Y%m%d'
+         )
+END AS sls_order_dt,
+
+CASE
+    WHEN sls_ship_dt = 0
+         OR LENGTH(sls_ship_dt) <> 8
+    THEN NULL
+
+    ELSE STR_TO_DATE(
+            CAST(sls_ship_dt AS CHAR),
+            '%Y%m%d'
+         )
+END AS sls_ship_dt,
+
+CASE
+    WHEN sls_due_dt = 0
+         OR LENGTH(sls_due_dt) <> 8
+    THEN NULL
+
+    ELSE STR_TO_DATE(
+            CAST(sls_due_dt AS CHAR),
+            '%Y%m%d'
+         )
+END AS sls_due_dt,
+   CASE
+   when sls_sales is null or sls_sales <=0 or sls_sales!=sls_quantity * abs(sls_price)
+		then sls_quantity * abs(sls_price) 
+else sls_sales
+END AS sls_sales,
+sls_quantity,
+case
+when sls_price is null or sls_price <=0 then sls_sales / nullif(sls_quantity,0)
+else sls_price
+end as sls_price
+from bronze.crm_sales_details) as t;
+
+-- erp_cust_az12
+insert into silver.erp_cust_az12(
+cid,
+bdate,
+gen
+)
+
+select substring(cid,4,length(cid))as cid,
+case
+when bdate < '1920-01-01' then null
+when bdate > now() then null
+else bdate
+end as bdate,
+ CASE
+    WHEN UPPER(TRIM(gen)) = 'M' THEN 'Male'
+    WHEN UPPER(TRIM(gen)) = 'F' THEN 'Female'
+    WHEN trim(gen) = '' THEN 'N/A'
+    ELSE gen
+END AS gen
+from bronze.erp_cust_az12;
+
+-- erp_loc_a101
+insert into silver.erp_loc_a101
+(SELECT   replace(cid,'-','') as CID,
+    
+    CASE
+        WHEN TRIM(REPLACE(CNTRY,CHAR(13),'')) = 'DE'
+            THEN 'Germany'
+
+        WHEN TRIM(REPLACE(CNTRY,CHAR(13),'')) IN ('US','USA')
+            THEN 'United States'
+
+        WHEN TRIM(REPLACE(CNTRY,CHAR(13),'')) = ''
+             OR CNTRY IS NULL
+            THEN 'N/A'
+
+        ELSE TRIM(REPLACE(CNTRY,CHAR(13),''))
+    END AS cntry_clean,
+    now()
+    
+    FROM bronze.erp_loc_a101);
+    
+-- erp_px_cat_g1v2
+INSERT INTO Silver.erp_px_cat_g1v2(
+ID,
+CAT,
+SUBCAT,
+MAINTENANCE,
+dwh_create_table 
+)
+
+SELECT ID, CAT, SUBCAT, MAINTENANCE,NOW()  FROM erp_px_cat_g1v2
+;
+end $$
+delimiter ;
+
+CALL silver.load_silver();
